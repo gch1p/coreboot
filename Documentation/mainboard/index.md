@@ -5,6 +5,10 @@ This section contains documentation about coreboot on specific mainboards.
 ## AMD
 - [padmelon](amd/padmelon/padmelon.md)
 
+## Apple
+
+- [MacBook Pro 10,1](apple/macbookpro10_1.md)
+
 ## ASRock
 
 - [H81M-HDS](asrock/h81m-hds.md)

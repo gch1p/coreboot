@@ -1,0 +1,2 @@
+config BOARD_APPLE_MACBOOKPRO10_1
+	bool "MacBookPro10,1"
