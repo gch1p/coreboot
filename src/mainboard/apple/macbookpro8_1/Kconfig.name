@@ -1,0 +1,2 @@
+config BOARD_APPLE_MACBOOKPRO8_1
+	bool "MacBookPro8,1"
