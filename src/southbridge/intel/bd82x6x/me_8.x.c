@@ -9,6 +9,7 @@
  */
 
 #include <acpi/acpi.h>
+#include <cf9_reset.h>
 #include <device/mmio.h>
 #include <device/device.h>
 #include <device/pci.h>
@@ -20,6 +21,8 @@
 #include <delay.h>
 #include <elog.h>
 #include <halt.h>
+#include <option.h>
+#include <timer.h>
 
 #include "me.h"
 #include "pch.h"
@@ -461,6 +464,76 @@ void intel_me8_finalize_smm(void)
 }
 
 #else /* !__SIMPLE_DEVICE__ */
+static bool enter_soft_temp_disable(void)
+{
+	/* The binary sequence for the disable command was found by PT in some vendor BIOS */
+	struct me_disable message = {
+		.rule_id = MKHI_DISABLE_RULE_ID,
+		.data = 0x01,
+	};
+	struct mkhi_header mkhi = {
+		.group_id	= MKHI_GROUP_ID_FWCAPS,
+		.command	= MKHI_FWCAPS_SET_RULE,
+	};
+	struct mei_header mei = {
+		.is_complete	= 1,
+		.length		= sizeof(mkhi) + sizeof(message),
+		.host_address	= MEI_HOST_ADDRESS,
+		.client_address	= MEI_ADDRESS_MKHI,
+	};
+	u32 resp;
+
+	if (mei_sendrecv(&mei, &mkhi, &message, &resp, sizeof(resp)) < 0
+			|| resp != MKHI_DISABLE_RULE_ID) {
+		printk(BIOS_WARNING, "ME: disable command failed\n");
+		return false;
+	}
+
+	return true;
+}
+
+static void enter_soft_temp_disable_wait(void)
+{
+	/*
+	 * TODO: Find smarter way to determine when we're ready to reboot.
+	 *
+	 * There has to be some bit in some register, or something, that indicates that ME has
+	 * finished doing its thing and we're ready to reboot.
+	 *
+	 * It was not found yet, though, and waiting for a response after the disable command is
+	 * not enough. If we reboot too early, ME will not be disabled on next boot. For now,
+	 * let's just wait for 1 second here.
+	 */
+	mdelay(1000);
+}
+
+static void exit_soft_temp_disable(struct device *dev)
+{
+	/* To bring ME out of Soft Temporary Disable Mode, host writes 0x20000000 to H_GS */
+	pci_write_config32(dev, PCI_ME_H_GS, 0x20000000);
+}
+
+static void exit_soft_temp_disable_wait(struct device *dev)
+{
+	struct me_hfs hfs;
+	struct stopwatch sw;
+
+	stopwatch_init_msecs_expire(&sw, ME_ENABLE_TIMEOUT);
+
+	/* Wait for fw_init_complete. Check every 50 ms, give up after 20 sec. */
+	do {
+		mdelay(50);
+		pci_read_dword_ptr(dev, &hfs, PCI_ME_HFS);
+		if (hfs.fw_init_complete)
+			break;
+	} while (!stopwatch_expired(&sw));
+
+	if (!hfs.fw_init_complete)
+		printk(BIOS_ERR, "ME: giving up on waiting for fw_init_complete\n");
+	else
+		printk(BIOS_NOTICE, "ME: took %lums to complete initialization\n",
+			stopwatch_duration_msecs(&sw));
+}
 
 /* Determine the path that we should take based on ME status */
 static me_bios_path intel_me_path(struct device *dev)
@@ -626,9 +699,17 @@ static void intel_me_init(struct device *dev)
 {
 	me_bios_path path = intel_me_path(dev);
 	me_bios_payload mbp_data;
+	u8 me_state = 0, me_state_prev = 0;
+	bool need_reset = false;
+	struct me_hfs hfs;
 
 	/* Do initial setup and determine the BIOS path */
 	printk(BIOS_NOTICE, "ME: BIOS path: %s\n", me_bios_path_values[path]);
+
+	get_option(&me_state, "me_state");
+	get_option(&me_state_prev, "me_state_prev");
+
+	printk(BIOS_DEBUG, "ME: me_state=%u, me_state_prev=%u\n", me_state, me_state_prev);
 
 	switch (path) {
 	case ME_S3WAKE_BIOS_PATH:
@@ -651,6 +732,20 @@ static void intel_me_init(struct device *dev)
 		if (intel_me_read_mbp(&mbp_data))
 			break;
 
+		/* Put ME in Software Temporary Disable Mode, if needed */
+		if (me_state == CMOS_ME_STATE_DISABLED
+				&& me_state_prev == CMOS_ME_STATE_NORMAL) {
+			printk(BIOS_INFO, "ME: disabling ME\n");
+			if (enter_soft_temp_disable()) {
+				enter_soft_temp_disable_wait();
+				need_reset = true;
+			} else {
+				printk(BIOS_ERR, "ME: failed to enter Soft Temporary Disable mode\n");
+			}
+
+			break;
+		}
+
 		if (CONFIG_DEFAULT_CONSOLE_LOGLEVEL >= BIOS_DEBUG) {
 			me_print_fw_version(&mbp_data.fw_version_name);
 			me_print_fwcaps(&mbp_data.fw_caps_sku);
@@ -662,12 +757,42 @@ static void intel_me_init(struct device *dev)
 		 */
 		break;
 
+	case ME_DISABLE_BIOS_PATH:
+		/* Bring ME out of Soft Temporary Disable mode, if needed */
+		pci_read_dword_ptr(dev, &hfs, PCI_ME_HFS);
+		if (hfs.operation_mode == ME_HFS_MODE_DIS
+				&& me_state == CMOS_ME_STATE_NORMAL
+				&& me_state_prev == CMOS_ME_STATE_DISABLED) {
+			printk(BIOS_INFO, "ME: re-enabling ME\n");
+
+			exit_soft_temp_disable(dev);
+			exit_soft_temp_disable_wait(dev);
+
+			/*
+			 * ME starts loading firmware immediately after writing to H_GS,
+			 * but Lenovo BIOS performs a reboot after bringing ME back to
+			 * Normal mode. Assume that global reset is needed.
+			 */
+			need_reset = true;
+		} else {
+			intel_me_hide(dev);
+		}
+		break;
+
 #if !CONFIG(HIDE_MEI_ON_ERROR)
 	case ME_ERROR_BIOS_PATH:
 #endif
 	case ME_RECOVERY_BIOS_PATH:
 	case ME_FIRMWARE_UPDATE_BIOS_PATH:
 		break;
+	}
+
+	if (me_state != me_state_prev)
+		set_option("me_state_prev", &me_state);
+
+	if (need_reset) {
+		set_global_reset(true);
+		full_reset();
 	}
 }
 

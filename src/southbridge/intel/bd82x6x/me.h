@@ -171,6 +171,19 @@ struct mei_header {
 #define MKHI_GLOBAL_RESET	0x0b
 
 #define MKHI_FWCAPS_GET_RULE	0x02
+#define MKHI_FWCAPS_SET_RULE	0x03
+
+#define MKHI_DISABLE_RULE_ID	0x06
+
+#define CMOS_ME_STATE_NORMAL	0
+#define CMOS_ME_STATE_DISABLED	1
+
+#define ME_ENABLE_TIMEOUT	20000
+
+struct me_disable {
+	u32 rule_id;
+	u32 data;
+} __packed;
 
 #define MKHI_MDES_ENABLE	0x09
 
@@ -220,6 +233,9 @@ typedef enum {
 	ME_DISABLE_BIOS_PATH,
 	ME_FIRMWARE_UPDATE_BIOS_PATH,
 } me_bios_path;
+
+/* Defined in me_common.c for both romstage and ramstage */
+void set_global_reset(bool enable);
 
 /* Defined in me_status.c for both romstage and ramstage */
 void intel_me_status(struct me_hfs *hfs, struct me_gmes *gmes);

@@ -96,22 +96,6 @@ int intel_early_me_uma_size(void)
 	return 0;
 }
 
-static inline void set_global_reset(int enable)
-{
-	u32 etr3 = pci_read_config32(PCH_LPC_DEV, ETR3);
-
-	/* Clear CF9 Without Resume Well Reset Enable */
-	etr3 &= ~ETR3_CWORWRE;
-
-	/* CF9GR indicates a Global Reset */
-	if (enable)
-		etr3 |= ETR3_CF9GR;
-	else
-		etr3 &= ~ETR3_CF9GR;
-
-	pci_write_config32(PCH_LPC_DEV, ETR3, etr3);
-}
-
 int intel_early_me_init_done(u8 status)
 {
 	u8 reset;
@@ -160,17 +144,17 @@ int intel_early_me_init_done(u8 status)
 		return 0;
 	case ME_HFS_ACK_RESET:
 		/* Non-power cycle reset */
-		set_global_reset(0);
+		set_global_reset(false);
 		reset = 0x06;
 		break;
 	case ME_HFS_ACK_PWR_CYCLE:
 		/* Power cycle reset */
-		set_global_reset(0);
+		set_global_reset(false);
 		reset = 0x0e;
 		break;
 	case ME_HFS_ACK_GBL_RESET:
 		/* Global reset */
-		set_global_reset(1);
+		set_global_reset(true);
 		reset = 0x0e;
 		break;
 	case ME_HFS_ACK_S3:

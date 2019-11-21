@@ -15,6 +15,7 @@ ramstage-y += usb_ehci.c
 ramstage-y += usb_xhci.c
 ramstage-y += me.c
 ramstage-y += me_8.x.c
+ramstage-y += me_common.c
 ramstage-y += smbus.c
 ramstage-y += ../common/pciehp.c
 
@@ -29,6 +30,7 @@ smm-y += smihandler.c me.c me_8.x.c pch.c
 romstage-y += early_smbus.c me_status.c
 romstage-y += early_rcba.c
 romstage-y += early_pch.c
+romstage-y += me_common.c
 
 ifeq ($(CONFIG_USE_NATIVE_RAMINIT),y)
 romstage-y += early_thermal.c early_me.c early_usb.c
