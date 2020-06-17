@@ -510,7 +510,8 @@ static void gma_pm_init_post_vbios(struct device *dev)
 		gtt_write(0xa18c, gtt_read(0xa18c) & ~1);
 		gtt_poll(0x130090, (1 << 0), (0 << 0));
 	} else {
-		gtt_write(0xa188, 0x1fffe);
+		gtt_write(0xa188, gtt_read(0xa188) & ~0xfffe0000);
+		gtt_write(0xa188, gtt_read(0xa188) & ~1);
 		if (gtt_poll(0x130040, (1 << 0), (0 << 0)))
 			gtt_write(0xa188, gtt_read(0xa188) | 1);
 	}
