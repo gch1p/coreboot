@@ -129,4 +129,18 @@ endif # !USE_NATIVE_RAMINIT
 config INTEL_GMA_BCLV_OFFSET
 	default 0x48254
 
+config GMA_ENABLE_RC6
+	bool "Enable RC6 (Render Standby)"
+	default y
+	help
+	  Select this if you want to enable RC6 (Render Standby).
+
+config GMA_ENABLE_RC6P
+	depends on GMA_ENABLE_RC6
+	bool "Enable RC6p (Deep Render Standby)"
+	default n
+	help
+	  Select this if you want to enable RC6p (Deep Render Standby) for Ivy
+	  Bridge.
+
 endif

@@ -450,15 +450,14 @@ static void gma_pm_init_pre_vbios(struct device *dev)
 	gtt_write(0xa06c, 0x000493e0); /* RP Down EI */
 	gtt_write(0xa070, 0x0000000a); /* RP Idle Hysteresis */
 
-	/*
-	 * 10a: Enable Render Standby (RC6)
-	 *
-	 * IvyBridge should also support DeepRenderStandby.
-	 *
-	 * Unfortunately it does not work reliably on all SKUs so
-	 * disable it here and it can be enabled by the kernel.
-	 */
-	gtt_write(0xa090, 0x88040000); /* HW RC Control */
+	/* 10a: Enable Render Standby (RC6) and Deep Render Standby (RC6p) */
+	reg32 = 0;
+	if (CONFIG(GMA_ENABLE_RC6))
+		reg32 |= 0x88040000;
+	if (CONFIG(GMA_ENABLE_RC6P) &&
+			(bridge_silicon_revision() & BASE_REV_MASK) == BASE_REV_IVB)
+		reg32 |= 0x88020000;
+	gtt_write(0xa090, reg32); /* HW RC Control */
 
 	/* 11: Normal Frequency Request */
 	/* RPNFREQ_VAL comes from MCHBAR 0x5998 23:16 */
@@ -516,8 +515,10 @@ static void gma_pm_init_post_vbios(struct device *dev)
 			gtt_write(0xa188, gtt_read(0xa188) | 1);
 	}
 
-	/* 16: SW RC Control */
-	gtt_write(0xa094, 0x00060000);
+	/* 16: SW RC state: RC6 deepest */
+	if (CONFIG(GMA_ENABLE_RC6) || (CONFIG(GMA_ENABLE_RC6P) &&
+			(bridge_silicon_revision() & BASE_REV_MASK) == BASE_REV_IVB))
+		gtt_write(0xa094, 0x00060000);
 
 	/* Setup Digital Port Hotplug */
 	reg32 = gtt_read(0xc4030);
