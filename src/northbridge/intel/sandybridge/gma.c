@@ -42,7 +42,7 @@ static const struct gt_powermeter snb_pm_gt1[] = {
 	{ 0xa23c, 0x0817fe19 },
 	{ 0xa240, 0x00000000 },
 	{ 0xa244, 0x00000000 },
-	{ 0xa248, 0x8000421e },
+	{ 0xa248, 0x0000421e },
 	{ 0 },
 };
 
@@ -65,7 +65,7 @@ static const struct gt_powermeter snb_pm_gt2[] = {
 	{ 0xa23c, 0x002a002b },
 	{ 0xa240, 0x00000000 },
 	{ 0xa244, 0x00000000 },
-	{ 0xa248, 0x8000421e },
+	{ 0xa248, 0x0000421e },
 	{ 0 },
 };
 
@@ -373,23 +373,20 @@ static void gma_pm_init_pre_vbios(struct device *dev)
 	}
 
 	/* 3: Gear ratio map */
-	gtt_write(0xa004, 0x00000010);
+	gtt_write(0xa004, 0x00000000);
 
 	/* 4: GFXPAUSE */
 	gtt_write(0xa000, 0x00070020);
 
-	/* 5: Dynamic EU trip control */
-	gtt_write(0xa080, 0x00000004);
-
-	/* 6: ECO bits */
+	/* 5: ECO bits */
 	reg32 = gtt_read(0xa180);
-	reg32 |= (1 << 26) | (1 << 31);
+	reg32 |= (1 << 26);
 	/* (bit 20=1 for SNB step D1+ / IVB A0+) */
 	if (bridge_silicon_revision() >= SNB_STEP_D1)
 		reg32 |= (1 << 20);
 	gtt_write(0xa180, reg32);
 
-	/* 6a: for SnB step D2+ only */
+	/* 5a: for SnB step D2+ only */
 	if (((bridge_silicon_revision() & BASE_REV_MASK) == BASE_REV_SNB) &&
 		(bridge_silicon_revision() >= SNB_STEP_D2)) {
 		reg32 = gtt_read(0x9400);
@@ -408,14 +405,14 @@ static void gma_pm_init_pre_vbios(struct device *dev)
 		reg32 |= (1 << 16);
 		gtt_write(0x907c, reg32);
 
-		/* 6b: Clocking reset controls */
+		/* 5b: Clocking reset controls */
 		gtt_write(0x9424, 0x00000001);
 	} else {
-		/* 6b: Clocking reset controls */
+		/* 5b: Clocking reset controls */
 		gtt_write(0x9424, 0x00000000);
 	}
 
-	/* 7 */
+	/* 6 */
 	if (gtt_poll(0x138124, (1 << 31), (0 << 31))) {
 		gtt_write(0x138128, 0x00000029); /* Mailbox Data */
 		gtt_write(0x138124, 0x80000004); /* Mailbox Cmd for RC6 VID */
@@ -424,7 +421,7 @@ static void gma_pm_init_pre_vbios(struct device *dev)
 		gtt_poll(0x138124, (1 << 31), (0 << 31));
 	}
 
-	/* 8 */
+	/* 7 */
 	gtt_write(0xa090, 0x00000000); /* RC Control */
 	gtt_write(0xa098, 0x03e80000); /* RC1e Wake Rate Limit */
 	gtt_write(0xa09c, 0x0028001e); /* RC6/6p Wake Rate Limit */
@@ -432,19 +429,19 @@ static void gma_pm_init_pre_vbios(struct device *dev)
 	gtt_write(0xa0a8, 0x0001e848); /* RC Evaluation Interval */
 	gtt_write(0xa0ac, 0x00000019); /* RC Idle Hysteresis */
 
-	/* 9 */
+	/* 8 */
 	gtt_write(0x2054, 0x0000000a); /* Render Idle Max Count */
 	gtt_write(0x12054,0x0000000a); /* Video Idle Max Count */
 	gtt_write(0x22054,0x0000000a); /* Blitter Idle Max Count */
 
-	/* 10 */
+	/* 9 */
 	gtt_write(0xa0b0, 0x00000000); /* Unblock Ack to Busy */
 	gtt_write(0xa0b4, 0x000003e8); /* RC1e Threshold */
 	gtt_write(0xa0b8, 0x0000c350); /* RC6 Threshold */
 	gtt_write(0xa0bc, 0x000186a0); /* RC6p Threshold */
 	gtt_write(0xa0c0, 0x0000fa00); /* RC6pp Threshold */
 
-	/* 11 */
+	/* 10 */
 	gtt_write(0xa010, 0x000f4240); /* RP Down Timeout */
 	gtt_write(0xa014, 0x12060000); /* RP Interrupt Limits */
 	gtt_write(0xa02c, 0x00015f90); /* RP Up Threshold */
@@ -453,17 +450,16 @@ static void gma_pm_init_pre_vbios(struct device *dev)
 	gtt_write(0xa06c, 0x000493e0); /* RP Down EI */
 	gtt_write(0xa070, 0x0000000a); /* RP Idle Hysteresis */
 
-	/*
-	 * 11a: Enable Render Standby (RC6)
-	 *
-	 * IvyBridge should also support DeepRenderStandby.
-	 *
-	 * Unfortunately it does not work reliably on all SKUs so
-	 * disable it here and it can be enabled by the kernel.
-	 */
-	gtt_write(0xa090, 0x88040000); /* HW RC Control */
+	/* 10a: Enable Render Standby (RC6) and Deep Render Standby (RC6p) */
+	reg32 = 0;
+	if (CONFIG(GMA_ENABLE_RC6))
+		reg32 |= 0x88040000;
+	if (CONFIG(GMA_ENABLE_RC6P) &&
+			(bridge_silicon_revision() & BASE_REV_MASK) == BASE_REV_IVB)
+		reg32 |= 0x88020000;
+	gtt_write(0xa090, reg32); /* HW RC Control */
 
-	/* 12: Normal Frequency Request */
+	/* 11: Normal Frequency Request */
 	/* RPNFREQ_VAL comes from MCHBAR 0x5998 23:16 */
 	/* only the lower 7 bits are used and shifted left by 25 */
 	reg32 = MCHBAR32(0x5998);
@@ -472,11 +468,17 @@ static void gma_pm_init_pre_vbios(struct device *dev)
 	reg32 <<= 25;
 	gtt_write(0xa008, reg32);
 
-	/* 13: RP Control */
+	/* 12: RP Control */
 	gtt_write(0xa024, 0x00000592);
 
-	/* 14: Enable PM Interrupts */
+	/* 13: Enable PM Interrupts */
 	gtt_write(0x4402c, 0x03000076);
+
+	/* 14: PM Lock Settings */
+	gtt_write(0xa248, gtt_read(0xa248) | (1 << 31));
+	gtt_write(0xa004, gtt_read(0xa004) | (1 <<  4));
+	gtt_write(0xa080, gtt_read(0xa080) | (1 <<  2));
+	gtt_write(0xa180, gtt_read(0xa180) | (1 << 31));
 
 	/* Clear 0x6c024 [8:6] */
 	reg32 = gtt_read(0x6c024);
@@ -508,13 +510,16 @@ static void gma_pm_init_post_vbios(struct device *dev)
 		gtt_write(0xa18c, gtt_read(0xa18c) & ~1);
 		gtt_poll(0x130090, (1 << 0), (0 << 0));
 	} else {
-		gtt_write(0xa188, 0x1fffe);
+		gtt_write(0xa188, gtt_read(0xa188) & ~0xfffe0000);
+		gtt_write(0xa188, gtt_read(0xa188) & ~1);
 		if (gtt_poll(0x130040, (1 << 0), (0 << 0)))
 			gtt_write(0xa188, gtt_read(0xa188) | 1);
 	}
 
-	/* 16: SW RC Control */
-	gtt_write(0xa094, 0x00060000);
+	/* 16: SW RC state: RC6 deepest */
+	if (CONFIG(GMA_ENABLE_RC6) || (CONFIG(GMA_ENABLE_RC6P) &&
+			(bridge_silicon_revision() & BASE_REV_MASK) == BASE_REV_IVB))
+		gtt_write(0xa094, 0x00060000);
 
 	/* Setup Digital Port Hotplug */
 	reg32 = gtt_read(0xc4030);
