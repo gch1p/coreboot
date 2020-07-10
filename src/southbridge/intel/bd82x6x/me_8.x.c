@@ -713,7 +713,6 @@ static void intel_me_init(struct device *dev)
 
 	switch (path) {
 	case ME_S3WAKE_BIOS_PATH:
-	case ME_DISABLE_BIOS_PATH:
 #if CONFIG(HIDE_MEI_ON_ERROR)
 	case ME_ERROR_BIOS_PATH:
 #endif
