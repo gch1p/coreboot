@@ -16,3 +16,4 @@ backlight=Both
 usb_always_on=Disable
 hybrid_graphics_mode=Integrated Only
 me_state=Normal
+hyper_threading=Enable
